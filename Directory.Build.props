@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <Authors>pdftools</Authors>
+    <Company>pdftools</Company>
+    <Product>发票A5到A4打印工具</Product>
+    <RepositoryUrl></RepositoryUrl>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{782D552D-28BE-4CD3-B395-F3B3E80DE5F7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pdftools.Core", "src\Pdftools.Core\Pdftools.Core.csproj", "{AC2F81A8-C84A-416B-92EE-BD8F51145BB5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pdftools.Desktop", "src\Pdftools.Desktop\Pdftools.Desktop.csproj", "{16F172B4-2037-4621-B0C7-1284850F77FC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AC2F81A8-C84A-416B-92EE-BD8F51145BB5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC2F81A8-C84A-416B-92EE-BD8F51145BB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC2F81A8-C84A-416B-92EE-BD8F51145BB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC2F81A8-C84A-416B-92EE-BD8F51145BB5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{16F172B4-2037-4621-B0C7-1284850F77FC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{16F172B4-2037-4621-B0C7-1284850F77FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{16F172B4-2037-4621-B0C7-1284850F77FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{16F172B4-2037-4621-B0C7-1284850F77FC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{AC2F81A8-C84A-416B-92EE-BD8F51145BB5} = {782D552D-28BE-4CD3-B395-F3B3E80DE5F7}
+		{16F172B4-2037-4621-B0C7-1284850F77FC} = {782D552D-28BE-4CD3-B395-F3B3E80DE5F7}
+	EndGlobalSection
+EndGlobal

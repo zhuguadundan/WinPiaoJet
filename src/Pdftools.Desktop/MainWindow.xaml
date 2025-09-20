@@ -1,0 +1,92 @@
+<Window x:Class="Pdftools.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="发票打印工具" Height="720" Width="1080">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 顶部工具栏：明确两排布局，第一排为导入/设备/模板/参数，第二排为动作按钮 -->
+        <StackPanel Margin="12" Grid.Row="0">
+          <WrapPanel Margin="0,0,0,8">
+            <Button x:Name="BtnOpenFile" Content="导入文件" Margin="0,0,8,0" Click="BtnOpenFile_Click"/>
+            <Button Content="导入文件夹" Margin="0,0,8,0" Click="BtnOpenFolder_Click"/>
+            <TextBlock Text="打印机:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+            <ComboBox x:Name="PrinterCombo" Width="220" Margin="0,0,8,0" SelectionChanged="PrinterCombo_SelectionChanged"/>
+            <TextBlock Text="模板:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+            <ComboBox x:Name="TemplateCombo" Width="160" Margin="0,0,8,0" SelectionChanged="TemplateCombo_SelectionChanged"/>
+            <Button Content="保存为模板" Margin="0,0,8,0" Click="BtnSaveTemplate_Click"/>
+            <TextBlock Text="边距(mm):" VerticalAlignment="Center" Margin="12,0,4,0"/>
+            <ComboBox x:Name="MarginCombo" Width="80" Margin="0,0,8,0" SelectionChanged="MarginCombo_SelectionChanged">
+              <ComboBoxItem Content="0"/>
+              <ComboBoxItem Content="3"/>
+              <ComboBoxItem Content="5"/>
+              <ComboBoxItem Content="8"/>
+            </ComboBox>
+            <CheckBox x:Name="AutoShrinkCheck" Content="自动微缩" IsChecked="True" Margin="8,0,8,0" Checked="AutoShrinkCheck_Changed" Unchecked="AutoShrinkCheck_Changed"/>
+            <TextBlock Text="安全距(mm):" VerticalAlignment="Center" Margin="12,0,4,0"/>
+            <ComboBox x:Name="SafeGapCombo" Width="80" Margin="0,0,8,0" SelectionChanged="SafeGapCombo_SelectionChanged">
+              <ComboBoxItem Content="5"/>
+              <ComboBoxItem Content="7"/>
+              <ComboBoxItem Content="10"/>
+            </ComboBox>
+            <TextBlock Text="自定义:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+            <TextBox x:Name="SafeGapCustom" Width="60" TextChanged="SafeGapCustom_TextChanged"/>
+          </WrapPanel>
+          <WrapPanel>
+            <Button Content="打印" Margin="0,0,8,0" Click="BtnPrint_Click"/>
+            <Button Content="打印全部" Margin="0,0,8,0" Click="BtnPrintAll_Click"/>
+            <Button Content="暂停" Margin="0,0,8,0" Click="BtnPause_Click"/>
+            <Button Content="继续" Margin="0,0,8,0" Click="BtnResume_Click"/>
+            <Button Content="取消" Margin="0,0,8,0" Click="BtnCancel_Click"/>
+            <Button Content="打印测试页" Margin="0,0,8,0" Click="BtnPrintTest_Click"/>
+            <Button Content="导出CSV" Margin="0,0,8,0" Click="BtnExportCsv_Click"/>
+            <Button Content="重试失败" Margin="0,0,8,0" Click="BtnRetryFailed_Click"/>
+            <Button Content="打开工具" Margin="0,0,8,0" Click="BtnOpenTools_Click"/>
+            <Button Content="模板管理" Margin="0,0,8,0" Click="BtnTemplates_Click"/>
+          </WrapPanel>
+        </StackPanel>
+
+        <!-- 中部：左侧文件列表占位，右侧预览 -->
+        <Grid Grid.Row="1" Margin="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="3*"/>
+            </Grid.ColumnDefinitions>
+
+            <DataGrid Grid.Column="0" AutoGenerateColumns="False" Margin="0,0,8,0" ItemsSource="{Binding Files}" SelectionChanged="FilesGrid_SelectionChanged" AllowDrop="True" Drop="FilesGrid_Drop">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="*"/>
+                    <DataGridTextColumn Header="页数" Binding="{Binding PageCount}" Width="80"/>
+                    <DataGridTextColumn Header="尺寸" Binding="{Binding Size}" Width="120"/>
+                    <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="120"/>
+                    <DataGridTextColumn Header="结果" Binding="{Binding Message}" Width="200"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Grid.Column="1" BorderBrush="#DDD" BorderThickness="1" Padding="8">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <Image x:Name="PreviewImage" Stretch="Uniform"/>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- 底部状态栏占位 -->
+        <StatusBar Grid.Row="2">
+            <StatusBarItem x:Name="StatusText" Content="就绪"/>
+            <Separator/>
+            <StatusBarItem x:Name="StatusInfo" Content=""/>
+            <Separator/>
+            <StatusBarItem>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="进度:" Margin="0,0,4,0"/>
+                    <ProgressBar x:Name="BatchProgress" Width="200" Height="14" Minimum="0" Maximum="100"/>
+                </StackPanel>
+            </StatusBarItem>
+            <StatusBarItem x:Name="StatusCount" Content=""/>
+        </StatusBar>
+    </Grid>
+</Window>

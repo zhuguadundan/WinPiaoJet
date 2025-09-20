@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Pdftools.Desktop</AssemblyName>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <!-- 使用 .NET SDK 自带的 Windows SDK for .NET 目标包（由 TFM 隐式提供），不额外生成投射 -->
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Pdftools.Core\Pdftools.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+
+    <PackageReference Include="Serilog" Version="4.0.2" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <!-- 保持最小依赖，仅日志相关包；Windows.* 投射由 TFM 提供的 Windows SDK for .NET 负责 -->
+
+  </ItemGroup>
+
+
+</Project>

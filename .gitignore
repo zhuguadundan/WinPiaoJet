@@ -1,0 +1,41 @@
+# ---- Visual Studio / .NET ----
+## Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+[Rr]eleases/
+[Pp]ublish/
+out/
+
+## VS/IDE
+.vs/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+
+## Packages / NuGet
+packages/
+*.nupkg
+**/project.lock.json
+
+## Logs
+*.log
+logs/
+
+## Dist / artifacts
+dist/
+artifacts/
+
+## Others
+*.orig
+*.tmp
+*.bak
+~$*
+*.DS_Store
+Thumbs.db
+
+# Keep VS Code settings (do NOT ignore .vscode)
+# .vscode/
+

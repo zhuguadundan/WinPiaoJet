@@ -1,0 +1,44 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Desktop (Debug)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build Desktop (Debug)",
+      "program": "${workspaceFolder}/src/Pdftools.Desktop/bin/Debug/net8.0-windows10.0.19041.0/Pdftools.Desktop.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/Pdftools.Desktop",
+      "console": "internalConsole",
+      "stopAtEntry": false,
+      "justMyCode": true,
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    },
+    {
+      "name": "Launch Desktop (Release Bin)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build Desktop (Release)",
+      "program": "${workspaceFolder}/src/Pdftools.Desktop/bin/Release/net8.0-windows10.0.19041.0/Pdftools.Desktop.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/Pdftools.Desktop",
+      "console": "internalConsole",
+      "stopAtEntry": false,
+      "justMyCode": true
+    },
+    {
+      "name": "Run Published (dist/win-x64)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "publish Desktop (Release)",
+      "program": "${workspaceFolder}/dist/win-x64/Pdftools.Desktop.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/dist/win-x64",
+      "console": "internalConsole",
+      "stopAtEntry": false,
+      "justMyCode": false
+    }
+  ]
+}

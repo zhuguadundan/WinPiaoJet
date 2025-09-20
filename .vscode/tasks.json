@@ -1,0 +1,52 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build Desktop (Debug)",
+      "type": "process",
+      "command": "C:/Program Files/dotnet/dotnet.exe",
+      "args": [
+        "build",
+        "${workspaceFolder}/Pdftools.sln",
+        "-c",
+        "Debug",
+        "/property:GenerateFullPaths=true"
+      ],
+      "problemMatcher": ["$msCompile"],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "build Desktop (Release)",
+      "type": "process",
+      "command": "C:/Program Files/dotnet/dotnet.exe",
+      "args": [
+        "build",
+        "${workspaceFolder}/Pdftools.sln",
+        "-c",
+        "Release",
+        "/property:GenerateFullPaths=true"
+      ],
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "publish Desktop (Release)",
+      "type": "process",
+      "command": "C:/Program Files/dotnet/dotnet.exe",
+      "args": [
+        "publish",
+        "${workspaceFolder}/src/Pdftools.Desktop/Pdftools.Desktop.csproj",
+        "/p:PublishProfile=FolderProfile",
+        "/p:Configuration=Release"
+      ],
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "clean",
+      "type": "process",
+      "command": "C:/Program Files/dotnet/dotnet.exe",
+      "args": ["clean", "${workspaceFolder}/Pdftools.sln"],
+      "problemMatcher": ["$msCompile"],
+      "group": "build"
+    }
+  ]
+}
