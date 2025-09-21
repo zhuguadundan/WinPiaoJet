@@ -25,7 +25,9 @@ public static class PageNumberService
         int total = doc.PageCount;
         double mmToPt = 72.0 / 25.4;
         double marginPt = marginMm * mmToPt;
-        var font = new XFont("Arial", 10, XFontStyleEx.Regular);
+        // 嵌入字体以提升跨机显示一致性
+        var fontOptions = new XPdfFontOptions(PdfFontEncoding.Unicode, PdfFontEmbedding.EmbedCompleteFontFile);
+        var font = new XFont("Arial", 10, XFontStyleEx.Regular, fontOptions);
         var brush = XBrushes.Black;
 
         for (int i = 0; i < total; i++)

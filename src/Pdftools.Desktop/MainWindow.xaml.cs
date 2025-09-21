@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using Pdftools.Desktop.Models;
 using System.Linq;
 
@@ -17,6 +18,8 @@ namespace Pdftools.Desktop
         private string? _currentFilePath;
         public ObservableCollection<FileItem> Files { get; } = new();
         private string _currentTemplateId = "default";
+        // 预览位图缓存：(file|page|dpi|mtimeTicks) -> BitmapSource
+        private readonly Dictionary<string, BitmapSource> _previewCache = new();
         public MainWindow()
         {
             InitializeComponent();
@@ -41,6 +44,9 @@ namespace Pdftools.Desktop
             // 默认选择边距 3mm 与安全距 5mm
             MarginCombo.SelectedIndex = 1;
             SafeGapCombo.SelectedIndex = 0;
+            // 预览/打印 DPI 默认
+            PreviewDpiCombo.SelectedIndex = 0; // 150
+            PrintDpiCombo.SelectedIndex = 1;   // 300
         }
 
         private void LoadPrintersSafe()
@@ -77,6 +83,12 @@ namespace Pdftools.Desktop
         }
 
         private void AutoShrinkCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(_currentFilePath))
+                _ = UpdatePlacementPreviewAsync();
+        }
+
+        private void PreviewDpiCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             if (!string.IsNullOrEmpty(_currentFilePath))
                 _ = UpdatePlacementPreviewAsync();
@@ -252,6 +264,7 @@ namespace Pdftools.Desktop
             _resumeEvent.Set();
             StatusText.Content = "开始批量打印...";
             var svc = new Services.PrintServiceSystem();
+            int printDpi = GetSelectedPrintDpi();
             _batchTask = System.Threading.Tasks.Task.Run(() =>
             {
                 int ok = 0, fail = 0, total = Files.Count;
@@ -264,7 +277,7 @@ namespace Pdftools.Desktop
                     {
                         if (!File.Exists(fi.Path)) throw new FileNotFoundException("文件不存在", fi.Path);
                         System.Windows.Application.Current.Dispatcher.Invoke(() => { fi.Status = "打印中"; fi.Message = string.Empty; });
-                        svc.PrintA5ToA4Top(fi.Path, printer, _currentTemplateId);
+                        svc.PrintA5ToA4Top(fi.Path, printer, _currentTemplateId, printDpi);
                         System.Windows.Application.Current.Dispatcher.Invoke(() => { fi.Status = "成功"; fi.Message = string.Empty; });
                         ok++;
                     }
@@ -349,13 +362,21 @@ namespace Pdftools.Desktop
             if (failed.Length == 0) { StatusText.Content = "无失败项"; return; }
             if (PrinterCombo.SelectedItem is not string printer) { StatusText.Content = "请先选择打印机"; return; }
             var svc = new Services.PrintServiceSystem();
-            int ok = 0, fail = 0;
-            foreach (var p in failed)
+            int printDpi = GetSelectedPrintDpi();
+            StatusText.Content = "开始后台重试失败项...";
+            _ = System.Threading.Tasks.Task.Run(() =>
             {
-                try { svc.PrintA5ToA4Top(p, printer, _currentTemplateId); ok++; }
-                catch { fail++; }
-            }
-            StatusText.Content = $"重试完成：成功 {ok}，失败 {fail}";
+                int ok = 0, fail = 0; int processed = 0; int total = failed.Length;
+                foreach (var p in failed)
+                {
+                    try { svc.PrintA5ToA4Top(p, printer, _currentTemplateId, printDpi); ok++; }
+                    catch { fail++; }
+                    processed++;
+                    int percent = (int)(processed * 100.0 / Math.Max(1, total));
+                    System.Windows.Application.Current.Dispatcher.Invoke(() => { BatchProgress.Value = percent; StatusCount.Content = $"{processed}/{total}"; });
+                }
+                System.Windows.Application.Current.Dispatcher.Invoke(() => { StatusText.Content = $"重试完成：成功 {ok}，失败 {fail}"; });
+            });
         }
 
         private static string EscapeCsv(string? s)
@@ -400,7 +421,8 @@ namespace Pdftools.Desktop
             var svc = new Services.PrintServiceSystem();
             try
             {
-                await System.Threading.Tasks.Task.Run(() => svc.PrintA5ToA4Top(_currentFilePath!, printer, templateId: _currentTemplateId));
+                int printDpi = GetSelectedPrintDpi();
+                await System.Threading.Tasks.Task.Run(() => svc.PrintA5ToA4Top(_currentFilePath!, printer, templateId: _currentTemplateId, dpi: printDpi));
                 StatusText.Content = "已发送到打印机";
             }
             catch (Exception ex)
@@ -411,16 +433,16 @@ namespace Pdftools.Desktop
 
         private async void LoadAndPreview(string filePath)
         {
-            try
-            {
-                // 使用 PDFsharp 统计页数
-                int pageCount = 0;
                 try
                 {
-                    var src = PdfSharp.Pdf.IO.PdfReader.Open(filePath, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
-                    pageCount = src.PageCount;
-                }
-                catch { }
+                    // 使用 PDFsharp 统计页数
+                    int pageCount = 0;
+                    try
+                    {
+                        using var src = PdfSharp.Pdf.IO.PdfReader.Open(filePath, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+                        pageCount = src.PageCount;
+                    }
+                    catch { }
                 StatusText.Content = $"已加载: {System.IO.Path.GetFileName(filePath)}  第1/{Math.Max(1,pageCount)}页";
             }
             catch (Exception ex)
@@ -538,8 +560,14 @@ namespace Pdftools.Desktop
                     double offsetX = layout.OffsetLeftMm / 25.4 * 96.0;
                     double offsetY = layout.OffsetTopMm / 25.4 * 96.0;
 
-                    // 渲染第一页（Windows.Data.Pdf）
-                    var bs = await Pdftools.Desktop.Services.WindowsPdfRenderer.RenderPageAsync(_currentFilePath, 0, 150);
+                    // 渲染第一页（Windows.Data.Pdf），加入简单缓存以减少重复渲染
+                    int dpiPreview = GetSelectedPreviewDpi();
+                    var cacheKey = $"{_currentFilePath}|0|{dpiPreview}|{System.IO.File.GetLastWriteTimeUtc(_currentFilePath).Ticks}";
+                    if (!_previewCache.TryGetValue(cacheKey, out var bs))
+                    {
+                        bs = await Pdftools.Desktop.Services.WindowsPdfRenderer.RenderPageAsync(_currentFilePath, 0, dpiPreview);
+                        _previewCache[cacheKey] = bs;
+                    }
                     var targetRect = new System.Windows.Rect(offsetX, offsetY, contentWdip, contentHdip);
                     dc.DrawImage(bs, targetRect);
 
@@ -569,6 +597,18 @@ namespace Pdftools.Desktop
             {
                 StatusText.Content = $"预览失败：{ex.Message}";
             }
+        }
+
+        private int GetSelectedPreviewDpi()
+        {
+            if (PreviewDpiCombo.SelectedItem is System.Windows.Controls.ComboBoxItem cbi && int.TryParse(cbi.Content?.ToString(), out var dpi)) return dpi;
+            return 150;
+        }
+
+        private int GetSelectedPrintDpi()
+        {
+            if (PrintDpiCombo.SelectedItem is System.Windows.Controls.ComboBoxItem cbi && int.TryParse(cbi.Content?.ToString(), out var dpi)) return dpi;
+            return 300;
         }
     }
 }

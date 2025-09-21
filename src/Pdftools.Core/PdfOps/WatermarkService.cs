@@ -21,7 +21,9 @@ public static class WatermarkService
             var page = doc.Pages[i];
             using var gfx = XGraphics.FromPdfPage(page, XGraphicsPdfPageOptions.Append);
             double w = page.Width.Point, h = page.Height.Point;
-            var font = new XFont("Arial", fontSize, XFontStyleEx.Bold);
+            // 嵌入字体以提升跨机显示一致性
+            var fontOptions = new XPdfFontOptions(PdfFontEncoding.Unicode, PdfFontEmbedding.EmbedCompleteFontFile);
+            var font = new XFont("Arial", fontSize, XFontStyleEx.Bold, fontOptions);
             var color = XColor.FromArgb((int)(opacity * 255), 200, 0, 0);
             var brush = new XSolidBrush(color);
 

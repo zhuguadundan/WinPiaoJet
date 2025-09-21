@@ -91,7 +91,7 @@ public partial class ToolsWindow : Window
                 if (doc == null || doc.PageCount == 0) { System.Windows.MessageBox.Show("PDF 无效"); return; }
                 for (int i = 0; i < doc.PageCount; i++)
                 {
-                    var page = doc.GetPage((uint)i);
+                    using var page = doc.GetPage((uint)i);
                     var dims = page.Dimensions; // DIP (1/96")
                     double widthDip = dims.MediaBox.Width;
                     double heightDip = dims.MediaBox.Height;
@@ -102,12 +102,15 @@ public partial class ToolsWindow : Window
                     var options = new PdfPageRenderOptions { DestinationWidth = w, DestinationHeight = h };
                     await page.RenderToStreamAsync(stream, options);
 
-                    // 将 WinRT 流转为 WPF BitmapFrame
+                    // 将 WinRT 流转为 WPF BitmapFrame（不依赖扩展方法）
                     stream.Seek(0);
-                    using var dotnetStream = stream.AsStream();
-                    var ms = new MemoryStream();
-                    await dotnetStream.CopyToAsync(ms);
-                    ms.Position = 0;
+                    var reader = new DataReader(stream.GetInputStreamAt(0));
+                    uint size = (uint)stream.Size;
+                    await reader.LoadAsync(size);
+                    var data = new byte[size];
+                    reader.ReadBytes(data);
+                    reader.Dispose();
+                    using var ms = new MemoryStream(data);
                     var decoder = BitmapDecoder.Create(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
                     var frame = decoder.Frames[0];
 

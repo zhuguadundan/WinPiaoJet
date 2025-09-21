@@ -15,6 +15,10 @@
     <ProjectReference Include="..\Pdftools.Core\Pdftools.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- 排除未使用且依赖 AsTask 的实现，避免引入 WindowsRuntime 扩展依赖 -->
+    <Compile Remove="Services\PdfRendererWinRT.cs" />
+  </ItemGroup>
+  <ItemGroup>
 
     <PackageReference Include="Serilog" Version="4.0.2" />
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />

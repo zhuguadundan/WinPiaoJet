@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using Pdftools.Core.Models;
 using Pdftools.Core.Utilities;
+using System.Threading;
 
 namespace Pdftools.Core.Services;
 
@@ -15,6 +16,7 @@ public class TemplateService : ITemplateService
 {
     private readonly string _filePath;
     private List<Template> _templates;
+    private static readonly Mutex _mtx = new(false, "Global/pdftools_templates_mutex");
 
     public TemplateService()
     {
@@ -50,8 +52,20 @@ public class TemplateService : ITemplateService
         if (!File.Exists(_filePath)) return new List<Template>();
         try
         {
-            var json = File.ReadAllText(_filePath);
-            return JsonSerializer.Deserialize<List<Template>>(json) ?? new List<Template>();
+            if (_mtx.WaitOne(TimeSpan.FromSeconds(3)))
+            {
+                try
+                {
+                    var json = File.ReadAllText(_filePath);
+                    return JsonSerializer.Deserialize<List<Template>>(json) ?? new List<Template>();
+                }
+                finally { try { _mtx.ReleaseMutex(); } catch { } }
+            }
+            else
+            {
+                var json = File.ReadAllText(_filePath);
+                return JsonSerializer.Deserialize<List<Template>>(json) ?? new List<Template>();
+            }
         }
         catch
         {
@@ -62,6 +76,26 @@ public class TemplateService : ITemplateService
     private void SaveAll()
     {
         var json = JsonSerializer.Serialize(_templates, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(_filePath, json);
+        var tmp = _filePath + ".tmp";
+        if (_mtx.WaitOne(TimeSpan.FromSeconds(5)))
+        {
+            try
+            {
+                File.WriteAllText(tmp, json);
+                try { File.Move(tmp, _filePath, overwrite: true); }
+                catch
+                {
+                    File.Copy(tmp, _filePath, overwrite: true);
+                    try { File.Delete(tmp); } catch { }
+                }
+            }
+            finally { try { _mtx.ReleaseMutex(); } catch { } }
+        }
+        else
+        {
+            File.WriteAllText(tmp, json);
+            try { File.Move(tmp, _filePath, overwrite: true); }
+            catch { File.Copy(tmp, _filePath, overwrite: true); try { File.Delete(tmp); } catch { } }
+        }
     }
 }

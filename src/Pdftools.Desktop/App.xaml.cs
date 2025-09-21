@@ -48,14 +48,15 @@ namespace Pdftools.Desktop
                 exArgs.SetObserved();
             };
 
-            // 启动自检（改用 Windows.Data.Pdf 渲染）
-            SelfCheck();
+            // 启动自检（全程内存管道，不落磁盘；不阻塞启动）
+            _ = SelfCheckAsync();
 
             Log.Information("应用启动");
             base.OnStartup(e);
         }
 
-        private async void SelfCheck()
+        // 自检：验证 PDF 预览渲染与 qpdf 可用性（内部自捕获异常，避免打断启动）
+        private async Task SelfCheckAsync()
         {
             // 1) PDF 渲染可用性：生成一页简单 PDF 到内存，然后用 Windows.Data.Pdf 渲染（全程内存，不落磁盘）
             try
@@ -69,22 +70,31 @@ namespace Pdftools.Desktop
                     gfx.DrawRectangle(XPens.Black, new XRect(10, 10, 50, 30));
                     doc.Save(msPdf, false);
                 }
+                // 将托管流内容写入 WinRT 内存流，避免使用扩展方法
                 msPdf.Position = 0;
-                using InMemoryRandomAccessStream ra = new InMemoryRandomAccessStream();
-                // 将 PDF 字节写入 WinRT 流
-                var writer = new DataWriter(ra);
-                writer.WriteBytes(msPdf.ToArray());
-                await writer.StoreAsync();
+                var ra = new InMemoryRandomAccessStream();
+                using (var temp = new MemoryStream(msPdf.ToArray()))
+                {
+                    var writer = new DataWriter(ra);
+                    writer.WriteBytes(temp.ToArray());
+                    await writer.StoreAsync();
+                    writer.DetachStream();
+                    writer.Dispose();
+                }
                 ra.Seek(0);
                 var pdf = await global::Windows.Data.Pdf.PdfDocument.LoadFromStreamAsync(ra);
-                var page0 = pdf.GetPage(0);
+                using var page0 = pdf.GetPage(0);
                 using var outStream = new InMemoryRandomAccessStream();
                 await page0.RenderToStreamAsync(outStream, new global::Windows.Data.Pdf.PdfPageRenderOptions { DestinationWidth = 100, DestinationHeight = 100 });
+                // 将 WinRT 流转换为托管内存
                 outStream.Seek(0);
-                using var net = outStream.AsStream();
-                var msOut = new MemoryStream();
-                await net.CopyToAsync(msOut);
-                msOut.Position = 0;
+                var reader = new DataReader(outStream.GetInputStreamAt(0));
+                uint size = (uint)outStream.Size;
+                await reader.LoadAsync(size);
+                var bytes = new byte[size];
+                reader.ReadBytes(bytes);
+                reader.Dispose();
+                using var msOut = new MemoryStream(bytes);
                 var decoder = new System.Windows.Media.Imaging.PngBitmapDecoder(msOut, System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
                 var frame = decoder.Frames[0];
                 if (frame.PixelWidth > 0) Log.Information("SelfCheck: PDF 渲染正常"); else throw new InvalidOperationException("Render empty");
@@ -92,8 +102,7 @@ namespace Pdftools.Desktop
             catch (Exception ex)
             {
                 Log.Error(ex, "SelfCheck: PDF 渲染失败");
-                // 自检失败不阻塞启动，仅记录日志并提示一次
-                System.Windows.MessageBox.Show("PDF 预览引擎自检失败（Windows 渲染）。请查看日志或继续导入PDF尝试预览。", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                // 自检失败不阻塞启动，仅记录日志，不弹窗打断启动流程
             }
 
             // 2) qpdf 可用性（可选）

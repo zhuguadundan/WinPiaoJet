@@ -1,5 +1,6 @@
 param(
-  [string]$Configuration = "Release"
+  [string]$Configuration = "Release",
+  [switch]$KillRunning
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,6 +10,31 @@ pushd $solution
 # 统一输出目录到解决方案根下的 dist/win-x64
 $dist = Join-Path $solution 'dist\win-x64'
 if (!(Test-Path $dist)) { New-Item -ItemType Directory -Path $dist | Out-Null }
+
+# 发布前检测是否有运行中的相同路径 EXE 被占用
+$exe = Join-Path $dist 'Pdftools.Desktop.exe'
+try {
+  $running = @()
+  $procs = Get-Process | Where-Object { $_.ProcessName -like 'Pdftools.Desktop*' }
+  foreach ($p in $procs) {
+    try {
+      if ($p.Path -and (Test-Path $exe) -and ($p.Path -ieq $exe)) { $running += $p }
+    } catch {}
+  }
+  if ($running.Count -gt 0) {
+    if ($KillRunning) {
+      Write-Warning ("[publish] Detected running instance(s): {0}. Trying to stop..." -f ($running.Id -join ','))
+      foreach ($p in $running) {
+        try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch { Write-Warning ("Stop-Process failed for PID {0}: {1}" -f $p.Id, $_.Exception.Message) }
+      }
+      Start-Sleep -Milliseconds 500
+    } else {
+      throw "publish blocked: running Pdftools.Desktop.exe is locking target. Close it or re-run with -KillRunning."
+    }
+  }
+} catch {
+  Write-Warning ("[publish] Running-instance check encountered issue: {0}" -f $_.Exception.Message)
+}
 
 Write-Host "[publish] Building $Configuration..."
 & "C:\Program Files\dotnet\dotnet.exe" publish .\src\Pdftools.Desktop\Pdftools.Desktop.csproj `

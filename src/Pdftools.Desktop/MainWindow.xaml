@@ -35,6 +35,18 @@
             </ComboBox>
             <TextBlock Text="自定义:" VerticalAlignment="Center" Margin="0,0,4,0"/>
             <TextBox x:Name="SafeGapCustom" Width="60" TextChanged="SafeGapCustom_TextChanged"/>
+            <TextBlock Text="预览DPI:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+            <ComboBox x:Name="PreviewDpiCombo" Width="80" SelectionChanged="PreviewDpiCombo_SelectionChanged">
+              <ComboBoxItem Content="150"/>
+              <ComboBoxItem Content="300"/>
+              <ComboBoxItem Content="600"/>
+            </ComboBox>
+            <TextBlock Text="打印DPI:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+            <ComboBox x:Name="PrintDpiCombo" Width="80">
+              <ComboBoxItem Content="200"/>
+              <ComboBoxItem Content="300"/>
+              <ComboBoxItem Content="600"/>
+            </ComboBox>
           </WrapPanel>
           <WrapPanel>
             <Button Content="打印" Margin="0,0,8,0" Click="BtnPrint_Click"/>

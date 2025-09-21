@@ -29,10 +29,12 @@ public static class ImageToPdfService
             double targetW = page.Width.Point - 2 * marginPt;
             double targetH = page.Height.Point - 2 * marginPt;
 
-            // 等比缩放适配
-            double scale = Math.Min(targetW / ximg.PixelWidth, targetH / ximg.PixelHeight);
-            double drawW = ximg.PixelWidth * scale;
-            double drawH = ximg.PixelHeight * scale;
+            // 等比缩放适配（使用图像的点单位，避免像素与 pt 混用）
+            double imgWpt = ximg.PointWidth;
+            double imgHpt = ximg.PointHeight;
+            double scale = Math.Min(targetW / imgWpt, targetH / imgHpt);
+            double drawW = imgWpt * scale;
+            double drawH = imgHpt * scale;
             double x = marginPt + (targetW - drawW) / 2;
             double y = marginPt + (targetH - drawH) / 2;
             gfx.DrawImage(ximg, x, y, drawW, drawH);
