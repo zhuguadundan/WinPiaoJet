@@ -20,33 +20,24 @@ namespace Pdftools.Desktop
         private string _currentTemplateId = "default";
         // 预览位图缓存：(file|page|dpi|mtimeTicks) -> BitmapSource
         private readonly Dictionary<string, BitmapSource> _previewCache = new();
+        // 简易 LRU 队列，限制缓存容量，防止内存涨高
+        private readonly System.Collections.Generic.LinkedList<string> _previewCacheOrder = new();
+        private const int PreviewCacheCapacity = 20;
         public MainWindow()
         {
             InitializeComponent();
             DataContext = this;
             LoadPrintersSafe();
-            LoadTemplates();
-            // 加载设置
+            // 记忆默认打印机
             var settings = Pdftools.Core.Services.SettingsService.Load();
             if (!string.IsNullOrEmpty(settings.DefaultPrinter))
             {
-                var printers = PrinterCombo.ItemsSource as string[];
-                if (printers != null)
+                if (PrinterCombo.ItemsSource is string[] printers)
                 {
                     var idx = Array.IndexOf(printers, settings.DefaultPrinter);
                     if (idx >= 0) PrinterCombo.SelectedIndex = idx;
                 }
             }
-            if (!string.IsNullOrEmpty(settings.DefaultTemplateId))
-            {
-                TemplateCombo.SelectedValue = settings.DefaultTemplateId;
-            }
-            // 默认选择边距 3mm 与安全距 5mm
-            MarginCombo.SelectedIndex = 1;
-            SafeGapCombo.SelectedIndex = 0;
-            // 预览/打印 DPI 默认
-            PreviewDpiCombo.SelectedIndex = 0; // 150
-            PrintDpiCombo.SelectedIndex = 1;   // 300
         }
 
         private void LoadPrintersSafe()
@@ -70,90 +61,7 @@ namespace Pdftools.Desktop
                 _ = UpdatePlacementPreviewAsync();
         }
 
-        private void MarginCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        {
-            if (!string.IsNullOrEmpty(_currentFilePath))
-                _ = UpdatePlacementPreviewAsync();
-        }
-
-        private void SafeGapCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        {
-            if (!string.IsNullOrEmpty(_currentFilePath))
-                _ = UpdatePlacementPreviewAsync();
-        }
-
-        private void AutoShrinkCheck_Changed(object sender, RoutedEventArgs e)
-        {
-            if (!string.IsNullOrEmpty(_currentFilePath))
-                _ = UpdatePlacementPreviewAsync();
-        }
-
-        private void PreviewDpiCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        {
-            if (!string.IsNullOrEmpty(_currentFilePath))
-                _ = UpdatePlacementPreviewAsync();
-        }
-
-        private void LoadTemplates()
-        {
-            var svc = new Pdftools.Core.Services.TemplateService();
-            var all = svc.GetAll();
-            TemplateCombo.ItemsSource = all;
-            TemplateCombo.DisplayMemberPath = nameof(Pdftools.Core.Models.Template.Name);
-            TemplateCombo.SelectedValuePath = nameof(Pdftools.Core.Models.Template.Id);
-            // 选中 default
-            var def = all.FirstOrDefault(t => t.Id == "default");
-            if (def != null)
-            {
-                TemplateCombo.SelectedValue = def.Id;
-                ApplyTemplateToUi(def);
-            }
-        }
-
-        private void TemplateCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-        {
-            if (TemplateCombo.SelectedValue is string id)
-            {
-                _currentTemplateId = id;
-                var svc = new Pdftools.Core.Services.TemplateService();
-                var tpl = svc.Get(id);
-                ApplyTemplateToUi(tpl);
-                // 保存默认模板到设置
-                var settings = Pdftools.Core.Services.SettingsService.Load();
-                settings.DefaultTemplateId = id;
-                Pdftools.Core.Services.SettingsService.Save(settings);
-                if (!string.IsNullOrEmpty(_currentFilePath)) _ = UpdatePlacementPreviewAsync();
-            }
-        }
-
-        private void ApplyTemplateToUi(Pdftools.Core.Models.Template tpl)
-        {
-            // 边距
-            var idx = tpl.MarginMm switch { 0 => 0, 3 => 1, 5 => 2, 8 => 3, _ => 1 };
-            MarginCombo.SelectedIndex = idx;
-            AutoShrinkCheck.IsChecked = tpl.AutoShrink;
-            // 安全距
-            var sidx = tpl.SafeGapMm switch { 5 => 0, 7 => 1, 10 => 2, _ => 0 };
-            SafeGapCombo.SelectedIndex = sidx;
-        }
-
-        private void BtnSaveTemplate_Click(object sender, RoutedEventArgs e)
-        {
-            var svc = new Pdftools.Core.Services.TemplateService();
-            var name = $"自定义模板 {DateTime.Now:HHmmss}";
-            var id = $"tpl-{DateTime.Now:yyyyMMddHHmmss}";
-            var newTpl = new Pdftools.Core.Models.Template
-            {
-                Id = id,
-                Name = name,
-                MarginMm = GetSelectedMarginMm(),
-                AutoShrink = AutoShrinkCheck.IsChecked == true,
-                SafeGapMm = 5
-            };
-            svc.Save(newTpl);
-            LoadTemplates();
-            TemplateCombo.SelectedValue = id;
-        }
+        // 模板相关操作移至“设置”菜单
         private void BtnOpenFile_Click(object sender, RoutedEventArgs e)
         {
             var ofd = new Microsoft.Win32.OpenFileDialog
@@ -264,7 +172,7 @@ namespace Pdftools.Desktop
             _resumeEvent.Set();
             StatusText.Content = "开始批量打印...";
             var svc = new Services.PrintServiceSystem();
-            int printDpi = GetSelectedPrintDpi();
+            int printDpi = 300; // 统一默认打印 DPI
             _batchTask = System.Threading.Tasks.Task.Run(() =>
             {
                 int ok = 0, fail = 0, total = Files.Count;
@@ -319,8 +227,10 @@ namespace Pdftools.Desktop
                 StatusText.Content = "请先选择打印机";
                 return;
             }
-            int marginMm = GetSelectedMarginMm();
-            int safeGapMm = GetSelectedSafeGapMm();
+            var tplSvcCal = new Pdftools.Core.Services.TemplateService();
+            var tplCal = tplSvcCal.Get(_currentTemplateId);
+            int marginMm = tplCal.MarginMm;
+            int safeGapMm = tplCal.SafeGapMm;
             try
             {
                 var svc = new Services.PrintServiceSystem();
@@ -362,7 +272,7 @@ namespace Pdftools.Desktop
             if (failed.Length == 0) { StatusText.Content = "无失败项"; return; }
             if (PrinterCombo.SelectedItem is not string printer) { StatusText.Content = "请先选择打印机"; return; }
             var svc = new Services.PrintServiceSystem();
-            int printDpi = GetSelectedPrintDpi();
+            int printDpi = 300; // 默认打印 DPI
             StatusText.Content = "开始后台重试失败项...";
             _ = System.Threading.Tasks.Task.Run(() =>
             {
@@ -421,7 +331,7 @@ namespace Pdftools.Desktop
             var svc = new Services.PrintServiceSystem();
             try
             {
-                int printDpi = GetSelectedPrintDpi();
+                int printDpi = 300; // 默认打印 DPI
                 await System.Threading.Tasks.Task.Run(() => svc.PrintA5ToA4Top(_currentFilePath!, printer, templateId: _currentTemplateId, dpi: printDpi));
                 StatusText.Content = "已发送到打印机";
             }
@@ -454,27 +364,7 @@ namespace Pdftools.Desktop
         }
 
 
-        private int GetSelectedMarginMm()
-        {
-            if (MarginCombo.SelectedItem is System.Windows.Controls.ComboBoxItem cbi && int.TryParse(cbi.Content?.ToString(), out var mm))
-                return mm;
-            return 3;
-        }
-
-        private int GetSelectedSafeGapMm()
-        {
-            if (int.TryParse(SafeGapCustom.Text, out var custom) && custom > 0 && custom <= 30)
-                return custom;
-            if (SafeGapCombo.SelectedItem is System.Windows.Controls.ComboBoxItem cbi && int.TryParse(cbi.Content?.ToString(), out var mm))
-                return mm;
-            return 5;
-        }
-
-        private void SafeGapCustom_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-        {
-            if (!string.IsNullOrEmpty(_currentFilePath))
-                _ = UpdatePlacementPreviewAsync();
-        }
+        // 边距/安全距改为读取模板参数；自定义输入移至“设置”
 
         private async Task UpdatePlacementPreviewAsync()
         {
@@ -505,9 +395,11 @@ namespace Pdftools.Desktop
 
                 // 计算布局
                 double dipToMm = 25.4 / 96.0;
-                int marginMm = GetSelectedMarginMm();
-                int safeGapMm = GetSelectedSafeGapMm();
-                bool autoShrink = AutoShrinkCheck.IsChecked == true;
+                var tplSvcPrev = new Pdftools.Core.Services.TemplateService();
+                var tplPrev = tplSvcPrev.Get(_currentTemplateId);
+                int marginMm = tplPrev.MarginMm;
+                int safeGapMm = tplPrev.SafeGapMm;
+                bool autoShrink = tplPrev.AutoShrink;
                 var layout = Pdftools.Core.Services.PrintLayout.ComputeA5Top(
                     pageWpt, pageHpt,
                     printableWidthMm: pw * dipToMm,
@@ -561,12 +453,28 @@ namespace Pdftools.Desktop
                     double offsetY = layout.OffsetTopMm / 25.4 * 96.0;
 
                     // 渲染第一页（Windows.Data.Pdf），加入简单缓存以减少重复渲染
-                    int dpiPreview = GetSelectedPreviewDpi();
+                    int dpiPreview = 150; // 默认预览 DPI
                     var cacheKey = $"{_currentFilePath}|0|{dpiPreview}|{System.IO.File.GetLastWriteTimeUtc(_currentFilePath).Ticks}";
                     if (!_previewCache.TryGetValue(cacheKey, out var bs))
                     {
                         bs = await Pdftools.Desktop.Services.WindowsPdfRenderer.RenderPageAsync(_currentFilePath, 0, dpiPreview);
                         _previewCache[cacheKey] = bs;
+                        // LRU 入队
+                        _previewCacheOrder.Remove(cacheKey);
+                        _previewCacheOrder.AddLast(cacheKey);
+                        // 超出容量则淘汰最久未用项
+                        if (_previewCacheOrder.Count > PreviewCacheCapacity)
+                        {
+                            var oldKey = _previewCacheOrder.First!.Value;
+                            _previewCacheOrder.RemoveFirst();
+                            _previewCache.Remove(oldKey);
+                        }
+                    }
+                    else
+                    {
+                        // 命中则刷新 LRU 顺序
+                        _previewCacheOrder.Remove(cacheKey);
+                        _previewCacheOrder.AddLast(cacheKey);
                     }
                     var targetRect = new System.Windows.Rect(offsetX, offsetY, contentWdip, contentHdip);
                     dc.DrawImage(bs, targetRect);
@@ -584,10 +492,7 @@ namespace Pdftools.Desktop
 
                 StatusInfo.Content = $"缩放: {layout.Scale * 100:0}%  尺寸: {layout.ContentWidthMm:0.0}×{layout.ContentHeightMm:0.0} mm";
 
-                var tplSvc = new Pdftools.Core.Services.TemplateService();
-                var tpl = tplSvc.Get(_currentTemplateId);
-                tpl.MarginMm = marginMm; tpl.AutoShrink = autoShrink; tpl.SafeGapMm = safeGapMm; tplSvc.Save(tpl);
-
+                // 预览不再即时覆盖模板参数，模板管理移至“设置”
                 var settings = Pdftools.Core.Services.SettingsService.Load();
                 settings.DefaultTemplateId = _currentTemplateId;
                 if (PrinterCombo.SelectedItem is string pSel) settings.DefaultPrinter = pSel;
@@ -599,16 +504,91 @@ namespace Pdftools.Desktop
             }
         }
 
-        private int GetSelectedPreviewDpi()
+        // 预览/打印 DPI 改为默认值，详细参数放到“设置”
+
+        private async void BtnImagesToPdf_Click(object sender, RoutedEventArgs e)
         {
-            if (PreviewDpiCombo.SelectedItem is System.Windows.Controls.ComboBoxItem cbi && int.TryParse(cbi.Content?.ToString(), out var dpi)) return dpi;
-            return 150;
+            var ofd = new Microsoft.Win32.OpenFileDialog { Filter = "图片|*.jpg;*.jpeg;*.png;*.bmp;*.tif;*.tiff", Multiselect = true };
+            if (ofd.ShowDialog() == true && ofd.FileNames?.Length > 0)
+            {
+                var sfd = new Microsoft.Win32.SaveFileDialog { Filter = "PDF 文件|*.pdf", FileName = $"图片合并_{DateTime.Now:yyyyMMdd_HHmmss}.pdf" };
+                if (sfd.ShowDialog() == true)
+                {
+                    var images = ofd.FileNames;
+                    var output = sfd.FileName;
+                    try
+                    {
+                        // 在后台线程执行转换，避免阻塞 UI 线程
+                        await System.Threading.Tasks.Task.Run(() =>
+                            Pdftools.Core.PdfOps.ImageToPdfService.Convert(images, output, marginMm: 5, pageSize: PdfSharp.PageSize.A4)
+                        );
+                        StatusText.Content = "图片已合并为 PDF";
+                    }
+                    catch (Exception ex) { StatusText.Content = "图片转PDF失败：" + ex.Message; }
+                }
+            }
         }
 
-        private int GetSelectedPrintDpi()
+        private async void BtnPdfToImages_Click(object sender, RoutedEventArgs e)
         {
-            if (PrintDpiCombo.SelectedItem is System.Windows.Controls.ComboBoxItem cbi && int.TryParse(cbi.Content?.ToString(), out var dpi)) return dpi;
-            return 300;
+            var ofd = new Microsoft.Win32.OpenFileDialog { Filter = "PDF 文件|*.pdf", Multiselect = false };
+            if (ofd.ShowDialog() == true)
+            {
+                var fbd = new System.Windows.Forms.FolderBrowserDialog();
+                if (fbd.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    int dpi = 300; // 默认 300 DPI
+                    string fmt = "png"; // 默认 PNG
+                    try
+                    {
+                        // 内存方式加载并逐页渲染
+                        using var fsIn = File.Open(ofd.FileName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                        using var ra = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
+                        var writer = new global::Windows.Storage.Streams.DataWriter(ra);
+                        using (var temp = new MemoryStream())
+                        {
+                            await fsIn.CopyToAsync(temp);
+                            var bytes = temp.ToArray();
+                            writer.WriteBytes(bytes);
+                            await writer.StoreAsync();
+                            writer.DetachStream();
+                            writer.Dispose();
+                        }
+                        ra.Seek(0);
+                        var doc = await global::Windows.Data.Pdf.PdfDocument.LoadFromStreamAsync(ra);
+                        if (doc == null || doc.PageCount == 0) { StatusText.Content = "PDF 无效"; return; }
+                        for (int i = 0; i < doc.PageCount; i++)
+                        {
+                            using var page = doc.GetPage((uint)i);
+                            var dims = page.Dimensions; // DIP
+                            uint w = (uint)Math.Max(1, Math.Round(dims.MediaBox.Width * dpi / 96.0));
+                            uint h = (uint)Math.Max(1, Math.Round(dims.MediaBox.Height * dpi / 96.0));
+                            using var stream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
+                            var options = new global::Windows.Data.Pdf.PdfPageRenderOptions { DestinationWidth = w, DestinationHeight = h };
+                            await page.RenderToStreamAsync(stream, options);
+
+                            // 读出字节，保存为 PNG/JPG/TIFF（默认 PNG）
+                            stream.Seek(0);
+                            var reader = new global::Windows.Storage.Streams.DataReader(stream.GetInputStreamAt(0));
+                            uint size = (uint)stream.Size;
+                            await reader.LoadAsync(size);
+                            var data = new byte[size];
+                            reader.ReadBytes(data);
+                            reader.Dispose();
+                            using var ms = new MemoryStream(data);
+                            var decoder = BitmapDecoder.Create(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                            var frame = decoder.Frames[0];
+                            string path = System.IO.Path.Combine(fbd.SelectedPath, $"{System.IO.Path.GetFileNameWithoutExtension(ofd.FileName)}_{i + 1:D3}.{fmt}".ToLower());
+                            using var fs = File.Open(path, FileMode.Create, FileAccess.Write, FileShare.None);
+                            var enc = new PngBitmapEncoder();
+                            enc.Frames.Add(frame);
+                            enc.Save(fs);
+                        }
+                        StatusText.Content = "PDF 已导出为图片";
+                    }
+                    catch (Exception ex) { StatusText.Content = "PDF转图片失败：" + ex.Message; }
+                }
+            }
         }
     }
 }

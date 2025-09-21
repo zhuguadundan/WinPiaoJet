@@ -22,7 +22,7 @@ public partial class ToolsWindow : Window
     private string? _watermarkSrc;
     private string? _pagenumSrc;
     private readonly System.Collections.Generic.List<string> _merges = new();
-    private string? _compressSrc;
+    // 压缩功能已移除
 
     public ToolsWindow()
     {
@@ -86,8 +86,21 @@ public partial class ToolsWindow : Window
             int jpegQ = 90; int.TryParse(JpegQuality.Text, out jpegQ); jpegQ = Math.Clamp(jpegQ, 50, 100);
             try
             {
-                StorageFile sf = await StorageFile.GetFileFromPathAsync(PdfToImgTip.Text);
-                var doc = await PdfDocument.LoadFromFileAsync(sf);
+                // 使用内存管道加载 PDF，避免直接占用源文件句柄
+                using var fsIn = File.Open(PdfToImgTip.Text, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var ra = new InMemoryRandomAccessStream();
+                var writer = new DataWriter(ra);
+                using (var temp = new MemoryStream())
+                {
+                    await fsIn.CopyToAsync(temp);
+                    var bytes = temp.ToArray();
+                    writer.WriteBytes(bytes);
+                    await writer.StoreAsync();
+                    writer.DetachStream();
+                    writer.Dispose();
+                }
+                ra.Seek(0);
+                var doc = await PdfDocument.LoadFromStreamAsync(ra);
                 if (doc == null || doc.PageCount == 0) { System.Windows.MessageBox.Show("PDF 无效"); return; }
                 for (int i = 0; i < doc.PageCount; i++)
                 {
@@ -135,6 +148,7 @@ public partial class ToolsWindow : Window
                         enc.Save(fs);
                     }
                 }
+                // 通过流加载已避免文件句柄占用，无需显式关闭文档类型
                 System.Windows.MessageBox.Show("已导出图片");
             }
             catch (Exception ex) { System.Windows.MessageBox.Show("导出失败：" + ex.Message); }
@@ -291,24 +305,5 @@ public partial class ToolsWindow : Window
         }
     }
 
-    private void BtnPickCompress_Click(object sender, RoutedEventArgs e)
-    {
-        var ofd = new Microsoft.Win32.OpenFileDialog { Filter = "PDF 文件|*.pdf", Multiselect = false };
-        if (ofd.ShowDialog() == true)
-        {
-            _compressSrc = ofd.FileName;
-            CompressTip.Text = QpdfRunner.IsAvailable() ? "检测到 qpdf，可执行压缩/线性化" : "未检测到 qpdf，请先安装并加入 PATH";
-        }
-    }
-
-    private void BtnDoCompress_Click(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrEmpty(_compressSrc)) { System.Windows.MessageBox.Show("请先选择 PDF"); return; }
-        var sfd = new Microsoft.Win32.SaveFileDialog { Filter = "PDF 文件|*.pdf", FileName = $"压缩_{DateTime.Now:yyyyMMdd_HHmmss}.pdf" };
-        if (sfd.ShowDialog() == true)
-        {
-            try { QpdfRunner.Compress(_compressSrc!, sfd.FileName, ChkLinearize.IsChecked == true); System.Windows.MessageBox.Show("已完成压缩/优化"); }
-            catch (Exception ex) { System.Windows.MessageBox.Show("压缩失败：" + ex.Message); }
-        }
-    }
+    // 压缩相关事件处理已移除
 }

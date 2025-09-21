@@ -11,54 +11,22 @@
 
         <!-- 顶部工具栏：明确两排布局，第一排为导入/设备/模板/参数，第二排为动作按钮 -->
         <StackPanel Margin="12" Grid.Row="0">
-          <WrapPanel Margin="0,0,0,8">
+          <Menu>
+            <MenuItem Header="设置">
+              <MenuItem Header="模板管理" Click="BtnTemplates_Click"/>
+              <MenuItem Header="高级工具" Click="BtnOpenTools_Click"/>
+            </MenuItem>
+          </Menu>
+          <WrapPanel Margin="8,4,0,0">
             <Button x:Name="BtnOpenFile" Content="导入文件" Margin="0,0,8,0" Click="BtnOpenFile_Click"/>
             <Button Content="导入文件夹" Margin="0,0,8,0" Click="BtnOpenFolder_Click"/>
             <TextBlock Text="打印机:" VerticalAlignment="Center" Margin="12,0,4,0"/>
-            <ComboBox x:Name="PrinterCombo" Width="220" Margin="0,0,8,0" SelectionChanged="PrinterCombo_SelectionChanged"/>
-            <TextBlock Text="模板:" VerticalAlignment="Center" Margin="12,0,4,0"/>
-            <ComboBox x:Name="TemplateCombo" Width="160" Margin="0,0,8,0" SelectionChanged="TemplateCombo_SelectionChanged"/>
-            <Button Content="保存为模板" Margin="0,0,8,0" Click="BtnSaveTemplate_Click"/>
-            <TextBlock Text="边距(mm):" VerticalAlignment="Center" Margin="12,0,4,0"/>
-            <ComboBox x:Name="MarginCombo" Width="80" Margin="0,0,8,0" SelectionChanged="MarginCombo_SelectionChanged">
-              <ComboBoxItem Content="0"/>
-              <ComboBoxItem Content="3"/>
-              <ComboBoxItem Content="5"/>
-              <ComboBoxItem Content="8"/>
-            </ComboBox>
-            <CheckBox x:Name="AutoShrinkCheck" Content="自动微缩" IsChecked="True" Margin="8,0,8,0" Checked="AutoShrinkCheck_Changed" Unchecked="AutoShrinkCheck_Changed"/>
-            <TextBlock Text="安全距(mm):" VerticalAlignment="Center" Margin="12,0,4,0"/>
-            <ComboBox x:Name="SafeGapCombo" Width="80" Margin="0,0,8,0" SelectionChanged="SafeGapCombo_SelectionChanged">
-              <ComboBoxItem Content="5"/>
-              <ComboBoxItem Content="7"/>
-              <ComboBoxItem Content="10"/>
-            </ComboBox>
-            <TextBlock Text="自定义:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-            <TextBox x:Name="SafeGapCustom" Width="60" TextChanged="SafeGapCustom_TextChanged"/>
-            <TextBlock Text="预览DPI:" VerticalAlignment="Center" Margin="12,0,4,0"/>
-            <ComboBox x:Name="PreviewDpiCombo" Width="80" SelectionChanged="PreviewDpiCombo_SelectionChanged">
-              <ComboBoxItem Content="150"/>
-              <ComboBoxItem Content="300"/>
-              <ComboBoxItem Content="600"/>
-            </ComboBox>
-            <TextBlock Text="打印DPI:" VerticalAlignment="Center" Margin="12,0,4,0"/>
-            <ComboBox x:Name="PrintDpiCombo" Width="80">
-              <ComboBoxItem Content="200"/>
-              <ComboBoxItem Content="300"/>
-              <ComboBoxItem Content="600"/>
-            </ComboBox>
-          </WrapPanel>
-          <WrapPanel>
-            <Button Content="打印" Margin="0,0,8,0" Click="BtnPrint_Click"/>
+            <ComboBox x:Name="PrinterCombo" Width="280" Margin="0,0,12,0" SelectionChanged="PrinterCombo_SelectionChanged"/>
             <Button Content="打印全部" Margin="0,0,8,0" Click="BtnPrintAll_Click"/>
-            <Button Content="暂停" Margin="0,0,8,0" Click="BtnPause_Click"/>
-            <Button Content="继续" Margin="0,0,8,0" Click="BtnResume_Click"/>
-            <Button Content="取消" Margin="0,0,8,0" Click="BtnCancel_Click"/>
             <Button Content="打印测试页" Margin="0,0,8,0" Click="BtnPrintTest_Click"/>
-            <Button Content="导出CSV" Margin="0,0,8,0" Click="BtnExportCsv_Click"/>
-            <Button Content="重试失败" Margin="0,0,8,0" Click="BtnRetryFailed_Click"/>
-            <Button Content="打开工具" Margin="0,0,8,0" Click="BtnOpenTools_Click"/>
-            <Button Content="模板管理" Margin="0,0,8,0" Click="BtnTemplates_Click"/>
+            <Separator Width="16" Background="Transparent"/>
+            <Button Content="图片→PDF" Margin="0,0,8,0" Click="BtnImagesToPdf_Click"/>
+            <Button Content="PDF→图片" Margin="0,0,8,0" Click="BtnPdfToImages_Click"/>
           </WrapPanel>
         </StackPanel>
 

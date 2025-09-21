@@ -1,7 +1,7 @@
 # AGENTS.md（项目工作指引 / 项目结构与技术栈）
 
 ## 项目目标
-- 面向财务/行政，将 A5 发票精确打印到 A4 上半张，并提供常用 PDF 工具（图片→PDF、PDF→图片、合并/拆分、旋转、水印/页码、压缩优化）。
+- 面向财务/行政，将 A5 发票精确打印到 A4 上半张，并提供常用 PDF 工具（图片→PDF、PDF→图片、合并/拆分、旋转、水印/页码）。
 
 ## 架构与技术栈
 - 运行时/语言：.NET 8（Windows，仅 x64）
@@ -9,7 +9,7 @@
 - PDF 生成：PDFsharp（轻量生成/绘图）
 - PDF 渲染：Windows.Data.Pdf（WinRT 渲染到内存流，供预览）
 - 日志：Serilog（File sink，按天滚动，目录 `%LocalAppData%/pdftools/logs`）
-- 可选工具：`qpdf.exe`（结构优化/线性化/对象流）
+<!-- 压缩依赖已取消 -->
 - 打包发布：PowerShell 脚本 `scripts/publish.ps1`（自包含单文件，输出到 `dist/win-x64` 并 Zip）
 
 ## 目录结构
@@ -19,7 +19,7 @@
 - `src/Pdftools.Desktop`：WPF 客户端
   - `App.xaml / App.xaml.cs`：启动与自检、全局异常
   - `Services/WindowsPdfRenderer.cs`：WinRT PDF 渲染
-  - `Services/QpdfRunner.cs`：qpdf 调用与可用性检测
+  <!-- 压缩模块调用器已移除 -->
   - `Windows/*`、`MainWindow.xaml*`：窗口/视图
 - `scripts/publish.ps1`：发布到 `dist/win-x64` 并打包 zip
 - `dist/win-x64`：发布产物文件夹
@@ -38,7 +38,7 @@
 ## 日志与排障
 - 日志路径：`%LocalAppData%/pdftools/logs/app-*.log`
 - 未处理异常：UI/非 UI/任务异常均写入日志，并给出用户提示
-- qpdf：未安装或 PATH 缺失时功能不可用（`QpdfRunner.IsAvailable()` 返回 false）
+<!-- 压缩相关功能已移除 -->
 
 ## 关键约定
 - 自检不落磁盘，使用内存流生成/渲染，避免文件映射占用冲突
@@ -48,7 +48,7 @@
 ## 常见风险与对策
 - 发布占用：目标 EXE 被占用导致发布失败 → 脚本启动前检测并提示；可选 `-KillRunning`
 - PDF 预览：字体解析引发依赖冲突 → 自检仅画图形；业务侧尽量避免未嵌入字体的复杂文本渲染
-- 外部依赖：`qpdf` 未安装 → 功能禁用但不影响主流程
+<!-- 不再依赖压缩外部工具 -->
 
 ## 贡献与风格
 - 保持方法短小、职责单一；异常捕获时使用语义化日志信息

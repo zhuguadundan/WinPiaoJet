@@ -55,7 +55,7 @@ namespace Pdftools.Desktop
             base.OnStartup(e);
         }
 
-        // 自检：验证 PDF 预览渲染与 qpdf 可用性（内部自捕获异常，避免打断启动）
+        // 自检：验证 PDF 预览渲染（内部自捕获异常，避免打断启动）
         private async Task SelfCheckAsync()
         {
             // 1) PDF 渲染可用性：生成一页简单 PDF 到内存，然后用 Windows.Data.Pdf 渲染（全程内存，不落磁盘）
@@ -70,34 +70,34 @@ namespace Pdftools.Desktop
                     gfx.DrawRectangle(XPens.Black, new XRect(10, 10, 50, 30));
                     doc.Save(msPdf, false);
                 }
-                // 将托管流内容写入 WinRT 内存流，避免使用扩展方法
+                // 将托管流内容写入 WinRT 内存流（单次拷贝）
                 msPdf.Position = 0;
-                var ra = new InMemoryRandomAccessStream();
-                using (var temp = new MemoryStream(msPdf.ToArray()))
-                {
-                    var writer = new DataWriter(ra);
-                    writer.WriteBytes(temp.ToArray());
-                    await writer.StoreAsync();
-                    writer.DetachStream();
-                    writer.Dispose();
-                }
+                using var ra = new InMemoryRandomAccessStream();
+                var writer = new DataWriter(ra);
+                var bytesPdf = msPdf.ToArray();
+                writer.WriteBytes(bytesPdf);
+                await writer.StoreAsync();
+                writer.DetachStream();
+                writer.Dispose();
                 ra.Seek(0);
                 var pdf = await global::Windows.Data.Pdf.PdfDocument.LoadFromStreamAsync(ra);
-                using var page0 = pdf.GetPage(0);
-                using var outStream = new InMemoryRandomAccessStream();
-                await page0.RenderToStreamAsync(outStream, new global::Windows.Data.Pdf.PdfPageRenderOptions { DestinationWidth = 100, DestinationHeight = 100 });
-                // 将 WinRT 流转换为托管内存
-                outStream.Seek(0);
-                var reader = new DataReader(outStream.GetInputStreamAt(0));
-                uint size = (uint)outStream.Size;
-                await reader.LoadAsync(size);
-                var bytes = new byte[size];
-                reader.ReadBytes(bytes);
-                reader.Dispose();
-                using var msOut = new MemoryStream(bytes);
-                var decoder = new System.Windows.Media.Imaging.PngBitmapDecoder(msOut, System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
-                var frame = decoder.Frames[0];
-                if (frame.PixelWidth > 0) Log.Information("SelfCheck: PDF 渲染正常"); else throw new InvalidOperationException("Render empty");
+                using (var page0 = pdf.GetPage(0))
+                using (var outStream = new InMemoryRandomAccessStream())
+                {
+                    await page0.RenderToStreamAsync(outStream, new global::Windows.Data.Pdf.PdfPageRenderOptions { DestinationWidth = 100, DestinationHeight = 100 });
+                    // 将 WinRT 流转换为托管内存
+                    outStream.Seek(0);
+                    var reader = new DataReader(outStream.GetInputStreamAt(0));
+                    uint size = (uint)outStream.Size;
+                    await reader.LoadAsync(size);
+                    var bytes = new byte[size];
+                    reader.ReadBytes(bytes);
+                    reader.Dispose();
+                    using var msOut = new MemoryStream(bytes);
+                    var decoder = new System.Windows.Media.Imaging.PngBitmapDecoder(msOut, System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+                    var frame = decoder.Frames[0];
+                    if (frame.PixelWidth > 0) Log.Information("SelfCheck: PDF 渲染正常"); else throw new InvalidOperationException("Render empty");
+                }
             }
             catch (Exception ex)
             {
@@ -105,16 +105,7 @@ namespace Pdftools.Desktop
                 // 自检失败不阻塞启动，仅记录日志，不弹窗打断启动流程
             }
 
-            // 2) qpdf 可用性（可选）
-            try
-            {
-                bool ok = QpdfRunner.IsAvailable();
-                Log.Information("SelfCheck: qpdf 可用性 = {Available}", ok);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "SelfCheck: 检测 qpdf 失败");
-            }
+            // 压缩功能已移除
         }
 
 

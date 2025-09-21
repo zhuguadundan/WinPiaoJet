@@ -112,16 +112,7 @@
                         <Button Content="添加页码" Margin="12,0,0,0" Click="BtnDoPageNumber_Click"/>
                     </StackPanel>
                 </GroupBox>
-                <GroupBox Header="压缩优化 (QPDF)">
-                    <StackPanel Margin="8">
-                        <WrapPanel>
-                            <Button Content="选择 PDF" Margin="0,0,8,0" Click="BtnPickCompress_Click"/>
-                            <CheckBox x:Name="ChkLinearize" Content="线性化" IsChecked="True" Margin="12,0,0,0"/>
-                            <Button Content="执行压缩" Margin="12,0,0,0" Click="BtnDoCompress_Click"/>
-                        </WrapPanel>
-                        <TextBlock x:Name="CompressTip" Margin="8,4,0,0" Foreground="Gray"/>
-                    </StackPanel>
-                </GroupBox>
+                <!-- 压缩功能已移除 -->
             </StackPanel>
         </TabItem>
     </TabControl>

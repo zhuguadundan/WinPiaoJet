@@ -7,36 +7,42 @@ $ErrorActionPreference = 'Stop'
 $solution = Split-Path -Parent $MyInvocation.MyCommand.Path | Split-Path -Parent
 pushd $solution
 
-# 统一输出目录到解决方案根下的 dist/win-x64
-$dist = Join-Path $solution 'dist\win-x64'
-if (!(Test-Path $dist)) { New-Item -ItemType Directory -Path $dist | Out-Null }
+# dist roots
+$distRoot = Join-Path $solution 'dist'
+New-Item -ItemType Directory -Path $distRoot -Force | Out-Null
+$dist = Join-Path $distRoot 'win-x64'
 
-# 发布前检测是否有运行中的相同路径 EXE 被占用
-$exe = Join-Path $dist 'Pdftools.Desktop.exe'
+# app name for packaging and binary rename
+$appName = 'winpiaojet'
+
+# staging folder to avoid locking issues
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+$staging = Join-Path $distRoot ("win-x64-staging-" + $stamp)
+New-Item -ItemType Directory -Path $staging -Force | Out-Null
+
+# check running target exe (old and new names)
+$targetExeOld = Join-Path $dist 'Pdftools.Desktop.exe'
+$targetExeNew = Join-Path $dist ("$appName.exe")
 try {
   $running = @()
-  $procs = Get-Process | Where-Object { $_.ProcessName -like 'Pdftools.Desktop*' }
+  $procs = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like 'Pdftools.Desktop*' -or $_.ProcessName -like "$appName*" }
   foreach ($p in $procs) {
     try {
-      if ($p.Path -and (Test-Path $exe) -and ($p.Path -ieq $exe)) { $running += $p }
+      if ($p.Path -and ((Test-Path $targetExeOld) -and ($p.Path -ieq $targetExeOld) -or ((Test-Path $targetExeNew) -and ($p.Path -ieq $targetExeNew)))) { $running += $p }
     } catch {}
   }
   if ($running.Count -gt 0) {
     if ($KillRunning) {
       Write-Warning ("[publish] Detected running instance(s): {0}. Trying to stop..." -f ($running.Id -join ','))
-      foreach ($p in $running) {
-        try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch { Write-Warning ("Stop-Process failed for PID {0}: {1}" -f $p.Id, $_.Exception.Message) }
-      }
+      foreach ($p in $running) { try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch { Write-Warning ("Stop-Process failed for PID {0}: {1}" -f $p.Id, $_.Exception.Message) } }
       Start-Sleep -Milliseconds 500
     } else {
-      throw "publish blocked: running Pdftools.Desktop.exe is locking target. Close it or re-run with -KillRunning."
+      Write-Warning "[publish] Target EXE seems in use. Publishing to staging."
     }
   }
-} catch {
-  Write-Warning ("[publish] Running-instance check encountered issue: {0}" -f $_.Exception.Message)
-}
+} catch { Write-Warning ("[publish] Running-instance check issue: {0}" -f $_.Exception.Message) }
 
-Write-Host "[publish] Building $Configuration..."
+Write-Host "[publish] Building $Configuration to staging..."
 & "C:\Program Files\dotnet\dotnet.exe" publish .\src\Pdftools.Desktop\Pdftools.Desktop.csproj `
   -c $Configuration `
   -r win-x64 `
@@ -44,49 +50,40 @@ Write-Host "[publish] Building $Configuration..."
   -p:PublishSingleFile=true `
   -p:PublishTrimmed=false `
   -p:IncludeNativeLibrariesForSelfExtract=true `
-  -o $dist
+  -o $staging
 
-if (!(Test-Path $dist)) { throw "publish failed: dist folder missing (expected: $dist)" }
+if (!(Test-Path $staging)) { throw "publish failed: staging folder missing: $staging" }
 
-# 简要结果输出
-$exe = $null
-try { $exe = Join-Path $dist 'Pdftools.Desktop.exe' } catch {}
-if ($dist -and $exe -and (Test-Path $exe)) {
-  Write-Host ("[publish] Output: {0}" -f $exe)
-} else {
-  Write-Host ("[publish] Output folder: {0}" -f $dist)
+$stagingExeOld = Join-Path $staging 'Pdftools.Desktop.exe'
+$stagingExeNew = Join-Path $staging ("$appName.exe")
+if (Test-Path $stagingExeOld) {
+  try { Move-Item $stagingExeOld $stagingExeNew -Force } catch { Copy-Item $stagingExeOld $stagingExeNew -Force }
 }
+if (Test-Path $stagingExeNew) { $stagingExe = $stagingExeNew } else { $stagingExe = $stagingExeOld }
+if (Test-Path $stagingExe) { Write-Host ("[publish] Output (staging): {0}" -f $stagingExe) } else { Write-Host ("[publish] Output folder (staging): {0}" -f $staging) }
 
-# 打包 Zip，便于分发
-$zip = "$solution\dist\pdftools-win-x64.zip"
-if ($zip -and (Test-Path $zip)) { Remove-Item $zip -Force }
-# 打包 Zip（优先使用 7-Zip，其次回退 Compress-Archive）
+# zip from staging
+$zip = Join-Path $distRoot ("$appName-win-x64.zip")
+try { if (Test-Path $zip) { Remove-Item $zip -Force } } catch { Write-Warning ("[publish] Could not remove existing zip: {0}" -f $_.Exception.Message) }
+
 $sevenZip = $null
 try { $sevenZip = (Get-Command 7z.exe -ErrorAction SilentlyContinue).Source } catch {}
-if (-not $sevenZip) {
-  $common7z = "C:\Program Files\7-Zip\7z.exe"
-  if (Test-Path $common7z) { $sevenZip = $common7z }
-}
+if (-not $sevenZip) { $common7z = "C:\Program Files\7-Zip\7z.exe"; if (Test-Path $common7z) { $sevenZip = $common7z } }
 
 if ($sevenZip) {
   Write-Host ("[publish] Using 7-Zip: {0}" -f $sevenZip)
-  if (-not $zip) { $zip = Join-Path $solution 'dist\pdftools-win-x64.zip' }
-  if (Test-Path $zip) { Remove-Item $zip -Force }
-  Push-Location $dist
+  Push-Location $staging
   & $sevenZip a -tzip -mx=9 $zip * | Out-Null
   Pop-Location
-  if (Test-Path $zip) { Write-Host ("[publish] Zip: {0}" -f $zip) } else { Write-Warning ("7-Zip zip not found: {0}" -f $zip) }
+  if (Test-Path $zip) { Write-Host ("[publish] Zip: {0}" -f $zip) } else { Write-Warning ("[publish] 7-Zip output missing: {0}" -f $zip) }
+} else {
+  Write-Warning "7z.exe not found, fallback to Compress-Archive."
+  try { Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $zip -Force; Write-Host ("[publish] Zip: {0}" -f $zip) } catch { Write-Warning ("Compress-Archive failed: {0}" -f $_.Exception.Message) }
 }
-else {
-  Write-Warning "7z.exe not found, fallback to Compress-Archive (install 7-Zip for better compression)."
-  try {
-    if (Test-Path $zip) { Remove-Item $zip -Force }
-    Compress-Archive -Path (Join-Path $dist '*') -DestinationPath $zip -Force
-    Write-Host ("[publish] Zip: {0}" -f $zip)
-  } catch {
-    Write-Warning ("Compress-Archive failed: {0}" -f $_.Exception.Message)
-  }
-}
+
+# replace dist/win-x64 using staging
+if (Test-Path $dist) { try { Remove-Item $dist -Recurse -Force } catch { Write-Warning ("[publish] Remove old dist failed: {0}" -f $_.Exception.Message) } }
+try { Move-Item $staging $dist -Force; Write-Host ("[publish] Deployed to {0}" -f $dist) } catch { Write-Warning ("[publish] Could not replace dist: {0}. Staging: {1}" -f $_.Exception.Message, $staging) }
 
 Write-Host "Done."
 popd

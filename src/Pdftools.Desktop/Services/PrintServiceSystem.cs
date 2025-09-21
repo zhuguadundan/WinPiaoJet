@@ -45,7 +45,7 @@ public class PrintServiceSystem : IPrintService
         var tpl = templateSvc.Get(templateId);
         int marginMm = tpl.MarginMm;
         int safeGapMm = tpl.SafeGapMm;
-        bool autoShrink = tpl.AutoShrink;
+        bool autoShrink = tpl.AutoShrink; // 取消“强制不缩放”，仅由模板的 AutoShrink 决定
 
         // 读取 PDF 页面尺寸（pt）——使用 PDFsharp，仅用于尺寸，不涉及渲染
         double pageWpt, pageHpt;
@@ -70,13 +70,53 @@ public class PrintServiceSystem : IPrintService
             dpi = newDpi;
         }
 
+        // 预先在后台线程获取打印能力并计算布局与目标像素尺寸，然后离屏渲染为 PNG 字节
+        using var serverPre = new LocalPrintServer();
+        using var queuePre = serverPre.GetPrintQueue(printerName);
+        var ticketPre = queuePre.DefaultPrintTicket ?? new PrintTicket();
+        ticketPre.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
+        var validatedPre = queuePre.MergeAndValidatePrintTicket(queuePre.DefaultPrintTicket, ticketPre);
+        var vtPre = validatedPre.ValidatedPrintTicket ?? ticketPre;
+        var capsPre = queuePre.GetPrintCapabilities(vtPre);
+        var areaPre = capsPre.PageImageableArea ?? throw new InvalidOperationException("无法读取打印机可打印区域");
+        double printableWidthDipPre = areaPre.ExtentWidth;
+        double printableHeightDipPre = areaPre.ExtentHeight;
+
+        var layoutPre = Pdftools.Core.Services.PrintLayout.ComputeA5Top(
+            pageWpt, pageHpt,
+            printableWidthMm: printableWidthDipPre / DipPerInch * MmPerInch,
+            printableHeightMm: printableHeightDipPre / DipPerInch * MmPerInch,
+            marginMm: marginMm,
+            safeGapMm: safeGapMm,
+            autoShrink: autoShrink);
+        double contentWdipPre = layoutPre.ContentWidthMm / MmPerInch * DipPerInch;
+        double contentHdipPre = layoutPre.ContentHeightMm / MmPerInch * DipPerInch;
+        int dstWpxPre = Math.Max(1, (int)Math.Round(contentWdipPre * dpi / DipPerInch));
+        int dstHpxPre = Math.Max(1, (int)Math.Round(contentHdipPre * dpi / DipPerInch));
+        double pixelsTargetPre = (double)dstWpxPre * dstHpxPre;
+        const double MaxPixelsLocal = 12_000_000;
+        if (pixelsTargetPre > MaxPixelsLocal)
+        {
+            double s = Math.Sqrt(MaxPixelsLocal / pixelsTargetPre);
+            int dpiAdj = (int)Math.Max(150, Math.Floor(dpi * s));
+            Log.Warning("Adjust print dpi from {Old} to {New} due to target pixel cap", dpi, dpiAdj);
+            dpi = dpiAdj;
+            dstWpxPre = Math.Max(1, (int)Math.Round(contentWdipPre * dpi / DipPerInch));
+            dstHpxPre = Math.Max(1, (int)Math.Round(contentHdipPre * dpi / DipPerInch));
+        }
+
+        Log.Debug("PreRender: render PDF to {W}x{H} pixels off UI thread...", dstWpxPre, dstHpxPre);
+        var (pngBytes, pxWOut, pxHOut) = Pdftools.Desktop.Services.WindowsPdfRenderer
+            .RenderPagePngAsync(filePath, 0, dstWpxPre, dstHpxPre)
+            .GetAwaiter().GetResult();
+
         void DoPrint()
         {
             try
             {
                 Log.Debug("DoPrint: acquiring queue and ticket...");
                 using var server = new LocalPrintServer();
-                var queue = server.GetPrintQueue(printerName);
+                using var queue = server.GetPrintQueue(printerName);
                 var ticket = queue.DefaultPrintTicket ?? new PrintTicket();
                 ticket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
 
@@ -89,13 +129,12 @@ public class PrintServiceSystem : IPrintService
                 var area = caps.PageImageableArea; // DIP (1/96")
                 if (area == null) throw new InvalidOperationException("无法读取打印机可打印区域");
 
-                // 获取打印区域尺寸
-                double printableWidthDip = area.ExtentWidth;
-                double printableHeightDip = area.ExtentHeight;
-                double originXDip = area.OriginWidth;
-                double originYDip = area.OriginHeight;
+                // 基于预计算的布局，使用 PNG 字节在 UI 线程解码
+                var printableWidthDip = area.ExtentWidth;
+                var printableHeightDip = area.ExtentHeight;
+                var originXDip = area.OriginWidth;
+                var originYDip = area.OriginHeight;
 
-                Log.Debug("DoPrint: computing layout...");
                 var layout = Pdftools.Core.Services.PrintLayout.ComputeA5Top(
                     pageWpt, pageHpt,
                     printableWidthMm: printableWidthDip / DipPerInch * MmPerInch,
@@ -103,52 +142,34 @@ public class PrintServiceSystem : IPrintService
                     marginMm: marginMm,
                     safeGapMm: safeGapMm,
                     autoShrink: autoShrink);
-                Log.Information("Print layout: content={W}x{H}mm offset=({X},{Y})mm scale={Scale:0.###}",
-                    layout.ContentWidthMm, layout.ContentHeightMm, layout.OffsetLeftMm, layout.OffsetTopMm, layout.Scale);
 
-                // 计算内容 DIP 与像素尺寸（尽量 1:1 像素映射）
                 double contentWdip = layout.ContentWidthMm / MmPerInch * DipPerInch;
                 double contentHdip = layout.ContentHeightMm / MmPerInch * DipPerInch;
-                int dstWpx = Math.Max(1, (int)Math.Round(contentWdip * dpi / DipPerInch));
-                int dstHpx = Math.Max(1, (int)Math.Round(contentHdip * dpi / DipPerInch));
-                double pixelsTarget = (double)dstWpx * dstHpx;
-                const double MaxPixelsLocal = 12_000_000;
-                if (pixelsTarget > MaxPixelsLocal)
-                {
-                    double s = Math.Sqrt(MaxPixelsLocal / pixelsTarget);
-                    int dpiAdj = (int)Math.Max(150, Math.Floor(dpi * s));
-                    Log.Warning("Adjust print dpi from {Old} to {New} due to target pixel cap", dpi, dpiAdj);
-                    dpi = dpiAdj;
-                    dstWpx = Math.Max(1, (int)Math.Round(contentWdip * dpi / DipPerInch));
-                    dstHpx = Math.Max(1, (int)Math.Round(contentHdip * dpi / DipPerInch));
-                }
+                double offsetX = originXDip + layout.OffsetLeftMm / MmPerInch * DipPerInch;
+                double offsetY = originYDip + layout.OffsetTopMm / MmPerInch * DipPerInch; // 左上锚点
 
-                // 渲染 PDF 到目标像素尺寸
-                Log.Debug("DoPrint: render PDF page to target pixels {W}x{H}...", dstWpx, dstHpx);
-                var image = Pdftools.Desktop.Services.WindowsPdfRenderer
-                    .RenderPageAsync(filePath, 0, dstWpx, dstHpx)
-                    .GetAwaiter().GetResult();
-
-                // 在 UI 线程内合成到 RTB（白底消除透明），并设置 DPI
-                Log.Debug("DoPrint: building RTB copy (flatten to white)...");
+                Log.Debug("DoPrint: building RTB from PNG bytes (use actual decoded size, 1:1 mapping)...");
+                using var ms = new MemoryStream(pngBytes);
+                var decoder = BitmapDecoder.Create(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                var frame = decoder.Frames[0];
+                int fw = frame.PixelWidth;
+                int fh = frame.PixelHeight;
+                double fwDip = fw * 96.0 / dpi;
+                double fhDip = fh * 96.0 / dpi;
                 var dvCopy = new DrawingVisual();
                 using (var dcc = dvCopy.RenderOpen())
                 {
-                    dcc.DrawRectangle(System.Windows.Media.Brushes.White, null, new Rect(0, 0, dstWpx, dstHpx));
-                    dcc.DrawImage(image, new Rect(0, 0, dstWpx, dstHpx));
+                    dcc.DrawRectangle(System.Windows.Media.Brushes.White, null, new Rect(0, 0, fwDip, fhDip));
+                    dcc.DrawImage(frame, new Rect(0, 0, fwDip, fhDip));
                 }
                 var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(
-                    dstWpx, dstHpx, dpi, dpi, System.Windows.Media.PixelFormats.Pbgra32);
+                    fw, fh, dpi, dpi, System.Windows.Media.PixelFormats.Pbgra32);
                 System.Windows.Media.RenderOptions.SetBitmapScalingMode(dvCopy, System.Windows.Media.BitmapScalingMode.NearestNeighbor);
                 rtb.Render(dvCopy);
                 if (rtb.CanFreeze) rtb.Freeze();
 
-                double offsetX = originXDip + layout.OffsetLeftMm / MmPerInch * DipPerInch;
-                double offsetY = originYDip + layout.OffsetTopMm / MmPerInch * DipPerInch; // 左上锚点
-
                 Log.Debug("DoPrint: prepare visual...");
                 var visual = new DrawingVisual();
-                // 打印时优先锐利，避免平滑导致的小字发糊
                 System.Windows.Media.RenderOptions.SetBitmapScalingMode(visual, System.Windows.Media.BitmapScalingMode.NearestNeighbor);
                 using (var dc = visual.RenderOpen())
                 {
@@ -167,13 +188,11 @@ public class PrintServiceSystem : IPrintService
                 catch (Exception ex)
                 {
                     Log.Error(ex, "PrintA5ToA4Top: writer.Write 失败 (first try)");
-                    // 降级重试：从 rtb 转为 24bpp Bgr24，再打印
                     try
                     {
                         var converted24 = new System.Windows.Media.Imaging.FormatConvertedBitmap(
                             rtb, System.Windows.Media.PixelFormats.Bgr24, null, 0);
                         if (converted24.CanFreeze) converted24.Freeze();
-
                         var visual2 = new DrawingVisual();
                         System.Windows.Media.RenderOptions.SetBitmapScalingMode(visual2, System.Windows.Media.BitmapScalingMode.NearestNeighbor);
                         using (var dc2 = visual2.RenderOpen())
@@ -212,7 +231,7 @@ public class PrintServiceSystem : IPrintService
     public void PrintCalibrationPage(string printerName, int marginMm, int safeGapMm)
     {
         using var server = new LocalPrintServer();
-        var queue = server.GetPrintQueue(printerName);
+        using var queue = server.GetPrintQueue(printerName);
         var ticket = queue.DefaultPrintTicket ?? new PrintTicket();
         ticket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4);
         var caps = queue.GetPrintCapabilities(ticket);
