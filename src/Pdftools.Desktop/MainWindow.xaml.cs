@@ -140,6 +140,18 @@ namespace Pdftools.Desktop
             }
         }
 
+        /// <summary>
+        /// 启动参数导入入口：供 App 在 OnStartup 后调用
+        /// </summary>
+        /// <param name="paths">PDF 路径（绝对路径）</param>
+        public void ImportPaths(string[] paths)
+        {
+            if (paths == null || paths.Length == 0) return;
+            var pdfs = paths.Where(p => !string.IsNullOrWhiteSpace(p) && System.IO.Path.GetExtension(p).Equals(".pdf", StringComparison.OrdinalIgnoreCase) && File.Exists(p)).ToArray();
+            if (pdfs.Length == 0) return;
+            AddFiles(pdfs);
+        }
+
         private void FilesGrid_Drop(object sender, System.Windows.DragEventArgs e)
         {
             if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))

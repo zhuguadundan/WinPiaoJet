@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using WpfApplication = System.Windows.Application;
@@ -48,11 +49,95 @@ namespace Pdftools.Desktop
                 exArgs.SetObserved();
             };
 
-            // 启动自检（全程内存管道，不落磁盘；不阻塞启动）
+            Log.Information("应用启动");
+
+            // 解析命令行参数
+            bool toPrint = false;
+            string? printer = null; string? templateId = null; int dpi = 300;
+            string[] pdfs = Array.Empty<string>();
+            try
+            {
+                var args = e.Args ?? Array.Empty<string>();
+                toPrint = args.Any(a => string.Equals(a, "--print", StringComparison.OrdinalIgnoreCase) || string.Equals(a, "/print", StringComparison.OrdinalIgnoreCase));
+                for (int i = 0; i < args.Length; i++)
+                {
+                    if (string.Equals(args[i], "--printer", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) { printer = args[i + 1]; i++; continue; }
+                    if (string.Equals(args[i], "--template", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) { templateId = args[i + 1]; i++; continue; }
+                    if (string.Equals(args[i], "--dpi", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length && int.TryParse(args[i + 1], out var d)) { dpi = Math.Clamp(d, 150, 1200); i++; continue; }
+                }
+                pdfs = args.Where(a => a.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) && File.Exists(a)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "解析命令行参数失败");
+            }
+
+            if (toPrint && pdfs.Length > 0)
+            {
+                // 静默打印模式：不创建任何窗口；先启动 Dispatcher 循环，再在后台执行打印，完成后关闭
+                this.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                base.OnStartup(e); // 确保 Dispatcher 开始泵消息，便于 WinRT/Invoke 正常工作
+
+                _ = System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        var svc = new Pdftools.Desktop.Services.PrintServiceSystem();
+                        var settings = Pdftools.Core.Services.SettingsService.Load();
+                        string? printerName = printer ?? settings.DefaultPrinter;
+                        if (string.IsNullOrWhiteSpace(printerName))
+                        {
+                            var all = svc.GetPrinters();
+                            if (all.Length > 0) printerName = all[0];
+                        }
+                        string tpl = templateId ?? settings.DefaultTemplateId ?? "default";
+                        if (!string.IsNullOrWhiteSpace(printerName))
+                        {
+                            foreach (var f in pdfs)
+                            {
+                                try
+                                {
+                                    // 在 UI Dispatcher 上执行整段打印，确保 WinRT 渲染与 XPS Writer 都在 STA/Dispatcher 线程
+                                    this.Dispatcher.Invoke(() =>
+                                    {
+                                        var svcLocal = new Pdftools.Desktop.Services.PrintServiceSystem();
+                                        svcLocal.PrintA5ToA4Top(f, printerName!, tpl, dpi);
+                                    });
+                                }
+                                catch (Exception ex1) { Log.Error(ex1, "Silent print failed: {File}", f); }
+                            }
+                        }
+                        else
+                        {
+                            Log.Warning("静默打印：未找到可用打印机，跳过");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error(ex, "静默打印失败");
+                    }
+                    finally
+                    {
+                        Log.Information("静默打印完成，退出应用");
+                        try { this.Dispatcher.Invoke(() => Shutdown(0)); } catch { Shutdown(0); }
+                    }
+                });
+                return;
+            }
+
+            // 非静默：创建窗口，并在需要时导入 PDF
+            base.OnStartup(e);
+
+            // 启动自检（仅交互模式，避免无谓开销）
             _ = SelfCheckAsync();
 
-            Log.Information("应用启动");
-            base.OnStartup(e);
+            var mw = new MainWindow();
+            this.MainWindow = mw;
+            mw.Show();
+            if (pdfs.Length > 0)
+            {
+                try { mw.ImportPaths(pdfs); } catch (Exception ex) { Log.Error(ex, "启动导入失败"); }
+            }
         }
 
         // 自检：验证 PDF 预览渲染（内部自捕获异常，避免打断启动）

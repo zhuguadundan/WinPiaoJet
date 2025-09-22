@@ -18,6 +18,16 @@
 - 发布自包含：
   - 运行 `scripts/publish.ps1`（输出在 `dist/win-x64`）
 
+## 右键菜单集成（Windows）
+- 发布包已内置脚本：解压后在 `tools/` 目录下可找到：
+  - `install-context-menu.ps1`
+  - `uninstall-context-menu.ps1`
+- 安装（在发布包根目录执行，ExePath 指向同级 exe）：
+  - `powershell -ExecutionPolicy Bypass -File tools\install-context-menu.ps1 -ExePath .\winpiaojet.exe`
+- 卸载：
+  - `powershell -ExecutionPolicy Bypass -File tools\uninstall-context-menu.ps1`
+- 细节说明见：`docs/右键菜单集成.md`（注册表位置、多选、静默打印说明）
+
 ## 打印校准与建议
 - 首次使用请打印“测试页”进行校准；根据实际打印结果微调“边距/安全距”并保存为模板
 - 驱动设置建议：关闭“适合页面/缩放”自动缩放，纸张 A4，单面

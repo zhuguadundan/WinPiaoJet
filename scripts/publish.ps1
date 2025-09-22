@@ -54,6 +54,14 @@ Write-Host "[publish] Building $Configuration to staging..."
 
 if (!(Test-Path $staging)) { throw "publish failed: staging folder missing: $staging" }
 
+# include helper scripts (context menu) into staging/tools
+$tools = Join-Path $staging 'tools'
+New-Item -ItemType Directory -Path $tools -Force | Out-Null
+$srcInstall = Join-Path $solution 'scripts\install-context-menu.ps1'
+$srcUninstall = Join-Path $solution 'scripts\uninstall-context-menu.ps1'
+try { if (Test-Path $srcInstall) { Copy-Item $srcInstall $tools -Force } } catch { Write-Warning ("[publish] copy install-context-menu.ps1 failed: {0}" -f $_.Exception.Message) }
+try { if (Test-Path $srcUninstall) { Copy-Item $srcUninstall $tools -Force } } catch { Write-Warning ("[publish] copy uninstall-context-menu.ps1 failed: {0}" -f $_.Exception.Message) }
+
 $stagingExeOld = Join-Path $staging 'Pdftools.Desktop.exe'
 $stagingExeNew = Join-Path $staging ("$appName.exe")
 if (Test-Path $stagingExeOld) {
