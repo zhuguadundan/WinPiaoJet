@@ -5,9 +5,6 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
-
 jobs:
   build-and-release:
     runs-on: windows-latest
@@ -15,23 +12,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 8
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Publish (self-contained)
+      - name: Build and publish (self-contained)
         shell: pwsh
         run: |
-          powershell -ExecutionPolicy Bypass -File scripts/publish.ps1 -Configuration Release -KillRunning
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+          ./scripts/publish.ps1 -Configuration Release
 
-      - name: Upload Release Asset
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/*win-x64.zip
-          draft: false
-          prerelease: false
+            dist/win-x64/winpiaojet.exe
+            dist/winpiaojet-win-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

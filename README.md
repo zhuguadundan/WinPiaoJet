@@ -18,6 +18,17 @@
 - 发布自包含：
   - 运行 `scripts/publish.ps1`（输出在 `dist/win-x64`）
 
+## GitHub Release（自动化）
+- 已配置 GitHub Actions：推送符合 `v*` 的标签将自动构建并创建 Release，附带以下产物：
+  - `dist/win-x64/winpiaojet.exe`
+  - `dist/winpiaojet-win-x64.zip`
+- 发布流程：
+  - 更新版本号（可选）：编辑 `Directory.Build.props` 中的 `VersionPrefix`
+  - 打标签并推送：
+    - `git tag v1.0.1`
+    - `git push origin v1.0.1`
+  - 稍等片刻，Release 将在 GitHub 上生成
+
 ## 右键菜单集成（Windows）
 - 发布包已内置脚本：解压后在 `tools/` 目录下可找到：
   - `install-context-menu.ps1`
