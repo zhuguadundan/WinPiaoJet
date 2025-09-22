@@ -152,6 +152,32 @@ namespace Pdftools.Desktop
             AddFiles(pdfs);
         }
 
+        /// <summary>
+        /// 启动后自动打印：可指定打印机/模板/DPI；否则使用当前/默认设置
+        /// </summary>
+        public void StartAutoPrint(string? printerName = null, int dpi = 300, string? templateId = null)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(templateId))
+                {
+                    _currentTemplateId = templateId;
+                }
+                // 设置打印机选择
+                if (!string.IsNullOrEmpty(printerName) && PrinterCombo.ItemsSource is string[] printers)
+                {
+                    var idx = Array.IndexOf(printers, printerName);
+                    if (idx >= 0) PrinterCombo.SelectedIndex = idx;
+                }
+                // 触发批量打印（使用现有按钮逻辑）
+                BtnPrintAll_Click(this, new RoutedEventArgs());
+            }
+            catch (Exception ex)
+            {
+                StatusText.Content = "自动打印失败：" + ex.Message;
+            }
+        }
+
         private void FilesGrid_Drop(object sender, System.Windows.DragEventArgs e)
         {
             if (e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
