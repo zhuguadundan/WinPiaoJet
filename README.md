@@ -22,6 +22,7 @@
 - 已配置 GitHub Actions：推送符合 `v*` 的标签将自动构建并创建 Release，附带以下产物：
   - `dist/win-x64/winpiaojet.exe`
   - `dist/winpiaojet-win-x64.zip`
+  - Release 说明会自动从 `CHANGELOG.md` 中抽取对应版本的节选（若无则回退为提交摘要）
 - 发布流程：
   - 更新版本号（可选）：编辑 `Directory.Build.props` 中的 `VersionPrefix`
   - 打标签并推送：

@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -23,12 +25,47 @@ jobs:
           Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
           ./scripts/publish.ps1 -Configuration Release
 
+      - name: Extract release notes from CHANGELOG.md
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF_NAME
+          if (-not $tag) { $tag = '${{ github.ref_name }}' }
+          if (-not $tag) { throw 'Tag not found' }
+          $version = $tag.TrimStart('v','V')
+          $out = Join-Path $env:GITHUB_WORKSPACE 'CHANGELOG_RELEASE.md'
+          $found = $false
+          if (Test-Path 'CHANGELOG.md') {
+            $lines = Get-Content 'CHANGELOG.md'
+            $start = ($lines | Select-String -SimpleMatch "## v$version" | Select -First 1).LineNumber
+            if ($start) {
+              $next = ($lines | Select-String -Pattern '^## v' | Where-Object { $_.LineNumber -gt $start } | Select -First 1).LineNumber
+              if ($next) { $slice = $lines[($start-1)..($next-2)] } else { $slice = $lines[($start-1)..($lines.Length-1)] }
+              "# Release $tag`n" | Out-File -FilePath $out -Encoding UTF8
+              ($slice -join "`n") | Out-File -FilePath $out -Append -Encoding UTF8
+              $found = $true
+            }
+          }
+          if (-not $found) {
+            # fallback to commit summary since previous tag
+            $prev = ''
+            try { $prev = (git describe --tags --abbrev=0 "$tag^") } catch {}
+            "# Release $tag`n" | Out-File -FilePath $out -Encoding UTF8
+            if ($prev) {
+              "## Changes since $prev`n" | Out-File -FilePath $out -Append -Encoding UTF8
+              git log --pretty="* %s (%h)" "$prev..$tag" | Out-File -FilePath $out -Append -Encoding UTF8
+            } else {
+              "No CHANGELOG section found and no previous tag detected." | Out-File -FilePath $out -Append -Encoding UTF8
+            }
+          }
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/win-x64/winpiaojet.exe
             dist/winpiaojet-win-x64.zip
+          body_path: CHANGELOG_RELEASE.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
